@@ -1,0 +1,716 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Motion-Driven Fluid Simulation</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            background: #000;
+            overflow: hidden;
+            font-family: 'Arial', sans-serif;
+        }
+        
+        canvas {
+            display: block;
+            width: 100vw;
+            height: 100vh;
+        }
+        
+        #webcam {
+            position: absolute;
+            top: -9999px;
+            left: -9999px;
+            opacity: 0;
+        }
+        
+        .controls {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+            background: rgba(0, 0, 0, 0.8);
+            padding: 20px;
+            border-radius: 15px;
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            color: white;
+            transition: all 0.3s ease;
+            z-index: 1000;
+        }
+        
+        .controls.hidden {
+            opacity: 0;
+            pointer-events: none;
+        }
+        
+        .color-section {
+            margin-bottom: 15px;
+        }
+        
+        .color-section label {
+            display: block;
+            margin-bottom: 5px;
+            font-size: 12px;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+        
+        .color-inputs {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 10px;
+        }
+        
+        input[type="color"] {
+            width: 40px;
+            height: 40px;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            background: transparent;
+        }
+        
+        input[type="range"] {
+            width: 100%;
+            margin: 5px 0;
+        }
+        
+        .button-group {
+            display: flex;
+            gap: 10px;
+            margin-top: 15px;
+            flex-wrap: wrap;
+        }
+        
+        button {
+            padding: 8px 16px;
+            background: linear-gradient(45deg, #667eea 0%, #764ba2 100%);
+            border: none;
+            border-radius: 20px;
+            color: white;
+            cursor: pointer;
+            font-size: 12px;
+            font-weight: bold;
+            transition: all 0.3s ease;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+        
+        button:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(102, 126, 234, 0.4);
+        }
+        
+        button:active {
+            transform: translateY(0);
+        }
+        
+        button.active {
+            background: linear-gradient(45deg, #f093fb 0%, #f5576c 100%);
+        }
+        
+        .status {
+            position: absolute;
+            top: 20px;
+            right: 20px;
+            background: rgba(0, 0, 0, 0.8);
+            padding: 10px 15px;
+            border-radius: 10px;
+            color: white;
+            font-size: 12px;
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+        }
+        
+        .status.ready {
+            border-color: #4ade80;
+            color: #4ade80;
+        }
+        
+        .status.error {
+            border-color: #ef4444;
+            color: #ef4444;
+        }
+    </style>
+</head>
+<body>
+    <canvas id="canvas"></canvas>
+    <video id="webcam" autoplay muted playsinline></video>
+    
+    <div class="controls" id="controls">
+        <div class="color-section">
+            <label>Fluid Colors</label>
+            <div class="color-inputs">
+                <input type="color" id="color1" value="#667eea">
+                <input type="color" id="color2" value="#764ba2">
+                <input type="color" id="color3" value="#f093fb">
+            </div>
+        </div>
+        
+        <div class="color-section">
+            <label>Background</label>
+            <input type="color" id="bgColor" value="#000000">
+        </div>
+        
+        <div class="color-section">
+            <label>Motion Sensitivity: <span id="sensitivityValue">50</span></label>
+            <input type="range" id="sensitivity" min="10" max="100" value="50">
+        </div>
+        
+        <div class="color-section">
+            <label>Fluid Viscosity: <span id="viscosityValue">50</span></label>
+            <input type="range" id="viscosity" min="1" max="100" value="50">
+        </div>
+        
+        <div class="button-group">
+            <button id="mirrorBtn">Mirror</button>
+            <button id="fullscreenBtn">Fullscreen</button>
+            <button id="hideUIBtn">Hide UI</button>
+            <button id="resetBtn">Reset</button>
+        </div>
+    </div>
+    
+    <div class="status" id="status">Initializing...</div>
+
+    <script>
+        // Global variables
+        let gl, canvas, webcam;
+        let fluidProgram, motionProgram, displayProgram;
+        let velocityFramebuffer, densityFramebuffer, motionFramebuffer;
+        let velocityTexture, densityTexture, motionTexture, webcamTexture;
+        let previousFrame = null;
+        let motionData = [];
+        let isWebcamReady = false;
+        let isMirrored = false;
+        let isUIHidden = false;
+        
+        // Fluid simulation parameters
+        let dt = 0.016;
+        let diffusion = 0.0001;
+        let viscosity = 0.0001;
+        let force = 300.0;
+        let motionSensitivity = 0.5;
+        
+        // Initialize WebGL
+        function initWebGL() {
+            canvas = document.getElementById('canvas');
+            gl = canvas.getContext('webgl2') || canvas.getContext('webgl');
+            
+            if (!gl) {
+                document.getElementById('status').textContent = 'WebGL not supported';
+                document.getElementById('status').className = 'status error';
+                return false;
+            }
+            
+            resizeCanvas();
+            window.addEventListener('resize', resizeCanvas);
+            return true;
+        }
+        
+        function resizeCanvas() {
+            canvas.width = window.innerWidth;
+            canvas.height = window.innerHeight;
+            gl.viewport(0, 0, canvas.width, canvas.height);
+        }
+        
+        // Shader compilation
+        function createShader(type, source) {
+            const shader = gl.createShader(type);
+            gl.shaderSource(shader, source);
+            gl.compileShader(shader);
+            
+            if (!gl.getShaderParameter(shader, gl.COMPILE_STATUS)) {
+                console.error('Shader compilation error:', gl.getShaderInfoLog(shader));
+                gl.deleteShader(shader);
+                return null;
+            }
+            
+            return shader;
+        }
+        
+        function createProgram(vertexSource, fragmentSource) {
+            const vertexShader = createShader(gl.VERTEX_SHADER, vertexSource);
+            const fragmentShader = createShader(gl.FRAGMENT_SHADER, fragmentSource);
+            
+            const program = gl.createProgram();
+            gl.attachShader(program, vertexShader);
+            gl.attachShader(program, fragmentShader);
+            gl.linkProgram(program);
+            
+            if (!gl.getProgramParameter(program, gl.LINK_STATUS)) {
+                console.error('Program linking error:', gl.getProgramInfoLog(program));
+                return null;
+            }
+            
+            return program;
+        }
+        
+        // Vertex shader (used for all programs)
+        const vertexShaderSource = `
+            attribute vec2 a_position;
+            varying vec2 v_texCoord;
+            
+            void main() {
+                v_texCoord = a_position * 0.5 + 0.5;
+                gl_Position = vec4(a_position, 0.0, 1.0);
+            }
+        `;
+        
+        // Fluid simulation fragment shader
+        const fluidFragmentSource = `
+            precision mediump float;
+            
+            uniform sampler2D u_velocity;
+            uniform sampler2D u_density;
+            uniform sampler2D u_motion;
+            uniform vec2 u_resolution;
+            uniform float u_dt;
+            uniform float u_diffusion;
+            uniform float u_viscosity;
+            uniform float u_force;
+            uniform vec3 u_color1;
+            uniform vec3 u_color2;
+            uniform vec3 u_color3;
+            uniform float u_time;
+            
+            varying vec2 v_texCoord;
+            
+            vec2 getVelocity(vec2 coord) {
+                return texture2D(u_velocity, coord).xy;
+            }
+            
+            float getDensity(vec2 coord) {
+                return texture2D(u_density, coord).r;
+            }
+            
+            float getMotion(vec2 coord) {
+                return texture2D(u_motion, coord).r;
+            }
+            
+            void main() {
+                vec2 texel = 1.0 / u_resolution;
+                vec2 coord = v_texCoord;
+                
+                // Get current values
+                vec2 vel = getVelocity(coord);
+                float density = getDensity(coord);
+                float motion = getMotion(coord);
+                
+                // Motion-driven forces
+                vec2 motionForce = vec2(0.0);
+                if (motion > 0.1) {
+                    // Calculate motion direction from neighboring pixels
+                    float motionL = getMotion(coord - vec2(texel.x, 0.0));
+                    float motionR = getMotion(coord + vec2(texel.x, 0.0));
+                    float motionU = getMotion(coord - vec2(0.0, texel.y));
+                    float motionD = getMotion(coord + vec2(0.0, texel.y));
+                    
+                    vec2 motionGrad = vec2(motionR - motionL, motionD - motionU);
+                    motionForce = normalize(motionGrad + vec2(0.001)) * motion * u_force;
+                }
+                
+                // Advection
+                vec2 advectCoord = coord - vel * u_dt;
+                vel = texture2D(u_velocity, advectCoord).xy;
+                
+                // Add motion forces
+                vel += motionForce * u_dt;
+                
+                // Viscosity (diffusion)
+                vec2 velL = getVelocity(coord - vec2(texel.x, 0.0));
+                vec2 velR = getVelocity(coord + vec2(texel.x, 0.0));
+                vec2 velU = getVelocity(coord - vec2(0.0, texel.y));
+                vec2 velD = getVelocity(coord + vec2(0.0, texel.y));
+                
+                vec2 laplacian = velL + velR + velU + velD - 4.0 * vel;
+                vel += u_viscosity * laplacian * u_dt;
+                
+                // Damping
+                vel *= 0.99;
+                
+                // Update density based on motion
+                if (motion > 0.1) {
+                    density = max(0.0, density - motion * 2.0);
+                } else {
+                    density = min(1.0, density + 0.5 * u_dt);
+                }
+                
+                // Color mixing based on velocity and position
+                float speed = length(vel);
+                float colorMix = sin(coord.x * 3.14159 + u_time) * 0.5 + 0.5;
+                vec3 finalColor = mix(mix(u_color1, u_color2, colorMix), u_color3, speed * 0.5);
+                
+                gl_FragColor = vec4(finalColor * density, density);
+            }
+        `;
+        
+        // Motion detection fragment shader
+        const motionFragmentSource = `
+            precision mediump float;
+            
+            uniform sampler2D u_currentFrame;
+            uniform sampler2D u_previousFrame;
+            uniform vec2 u_resolution;
+            uniform float u_sensitivity;
+            uniform bool u_mirror;
+            
+            varying vec2 v_texCoord;
+            
+            void main() {
+                vec2 coord = u_mirror ? vec2(1.0 - v_texCoord.x, v_texCoord.y) : v_texCoord;
+                
+                vec3 current = texture2D(u_currentFrame, coord).rgb;
+                vec3 previous = texture2D(u_previousFrame, coord).rgb;
+                
+                vec3 diff = abs(current - previous);
+                float motion = (diff.r + diff.g + diff.b) / 3.0;
+                
+                motion = smoothstep(0.02, 0.1, motion) * u_sensitivity;
+                
+                gl_FragColor = vec4(motion, motion, motion, 1.0);
+            }
+        `;
+        
+        // Display fragment shader
+        const displayFragmentSource = `
+            precision mediump float;
+            
+            uniform sampler2D u_fluid;
+            uniform sampler2D u_webcam;
+            uniform vec3 u_bgColor;
+            uniform bool u_mirror;
+            
+            varying vec2 v_texCoord;
+            
+            void main() {
+                vec2 coord = u_mirror ? vec2(1.0 - v_texCoord.x, v_texCoord.y) : v_texCoord;
+                
+                vec4 fluid = texture2D(u_fluid, v_texCoord);
+                vec3 webcamColor = texture2D(u_webcam, coord).rgb;
+                
+                // Blend webcam background with fluid overlay
+                vec3 finalColor = mix(webcamColor, fluid.rgb, fluid.a);
+                finalColor = mix(u_bgColor, finalColor, fluid.a + 0.1);
+                
+                gl_FragColor = vec4(finalColor, 1.0);
+            }
+        `;
+        
+        // Initialize shaders and programs
+        function initShaders() {
+            fluidProgram = createProgram(vertexShaderSource, fluidFragmentSource);
+            motionProgram = createProgram(vertexShaderSource, motionFragmentSource);
+            displayProgram = createProgram(vertexShaderSource, displayFragmentSource);
+            
+            if (!fluidProgram || !motionProgram || !displayProgram) {
+                document.getElementById('status').textContent = 'Shader compilation failed';
+                document.getElementById('status').className = 'status error';
+                return false;
+            }
+            
+            return true;
+        }
+        
+        // Create textures and framebuffers
+        function initTextures() {
+            const width = canvas.width;
+            const height = canvas.height;
+            
+            // Create textures
+            velocityTexture = createTexture(width, height);
+            densityTexture = createTexture(width, height);
+            motionTexture = createTexture(width, height);
+            webcamTexture = createTexture(width, height);
+            
+            // Create framebuffers
+            velocityFramebuffer = createFramebuffer(velocityTexture);
+            densityFramebuffer = createFramebuffer(densityTexture);
+            motionFramebuffer = createFramebuffer(motionTexture);
+        }
+        
+        function createTexture(width, height) {
+            const texture = gl.createTexture();
+            gl.bindTexture(gl.TEXTURE_2D, texture);
+            gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, width, height, 0, gl.RGBA, gl.UNSIGNED_BYTE, null);
+            gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+            gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+            gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+            gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+            return texture;
+        }
+        
+        function createFramebuffer(texture) {
+            const framebuffer = gl.createFramebuffer();
+            gl.bindFramebuffer(gl.FRAMEBUFFER, framebuffer);
+            gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, texture, 0);
+            return framebuffer;
+        }
+        
+        // Setup geometry
+        function setupGeometry() {
+            const vertices = new Float32Array([
+                -1, -1,
+                 1, -1,
+                -1,  1,
+                 1,  1
+            ]);
+            
+            const buffer = gl.createBuffer();
+            gl.bindBuffer(gl.ARRAY_BUFFER, buffer);
+            gl.bufferData(gl.ARRAY_BUFFER, vertices, gl.STATIC_DRAW);
+            
+            return buffer;
+        }
+        
+        // Initialize webcam
+        async function initWebcam() {
+            webcam = document.getElementById('webcam');
+            
+            try {
+                const stream = await navigator.mediaDevices.getUserMedia({
+                    video: { width: 640, height: 480 }
+                });
+                
+                webcam.srcObject = stream;
+                
+                webcam.addEventListener('loadedmetadata', () => {
+                    isWebcamReady = true;
+                    document.getElementById('status').textContent = 'Ready - Motion detected';
+                    document.getElementById('status').className = 'status ready';
+                });
+                
+                return true;
+            } catch (error) {
+                console.error('Webcam access denied:', error);
+                document.getElementById('status').textContent = 'Webcam access denied';
+                document.getElementById('status').className = 'status error';
+                return false;
+            }
+        }
+        
+        // Update webcam texture
+        function updateWebcamTexture() {
+            if (!isWebcamReady) return;
+            
+            gl.bindTexture(gl.TEXTURE_2D, webcamTexture);
+            gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, webcam);
+        }
+        
+        // Motion detection
+        function detectMotion() {
+            if (!isWebcamReady) return;
+            
+            gl.useProgram(motionProgram);
+            gl.bindFramebuffer(gl.FRAMEBUFFER, motionFramebuffer);
+            
+            // Set uniforms
+            gl.uniform1i(gl.getUniformLocation(motionProgram, 'u_currentFrame'), 0);
+            gl.uniform1i(gl.getUniformLocation(motionProgram, 'u_previousFrame'), 1);
+            gl.uniform2f(gl.getUniformLocation(motionProgram, 'u_resolution'), canvas.width, canvas.height);
+            gl.uniform1f(gl.getUniformLocation(motionProgram, 'u_sensitivity'), motionSensitivity);
+            gl.uniform1i(gl.getUniformLocation(motionProgram, 'u_mirror'), isMirrored);
+            
+            // Bind textures
+            gl.activeTexture(gl.TEXTURE0);
+            gl.bindTexture(gl.TEXTURE_2D, webcamTexture);
+            
+            if (previousFrame) {
+                gl.activeTexture(gl.TEXTURE1);
+                gl.bindTexture(gl.TEXTURE_2D, previousFrame);
+            }
+            
+            // Draw
+            gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+            
+            // Store current frame as previous
+            if (!previousFrame) {
+                previousFrame = createTexture(canvas.width, canvas.height);
+            }
+            
+            gl.bindTexture(gl.TEXTURE_2D, previousFrame);
+            gl.copyTexImage2D(gl.TEXTURE_2D, 0, gl.RGBA, 0, 0, canvas.width, canvas.height, 0);
+        }
+        
+        // Fluid simulation step
+        function simulateFluid() {
+            gl.useProgram(fluidProgram);
+            gl.bindFramebuffer(gl.FRAMEBUFFER, densityFramebuffer);
+            
+            // Get color values
+            const color1 = hexToRgb(document.getElementById('color1').value);
+            const color2 = hexToRgb(document.getElementById('color2').value);
+            const color3 = hexToRgb(document.getElementById('color3').value);
+            
+            // Set uniforms
+            gl.uniform1i(gl.getUniformLocation(fluidProgram, 'u_velocity'), 0);
+            gl.uniform1i(gl.getUniformLocation(fluidProgram, 'u_density'), 1);
+            gl.uniform1i(gl.getUniformLocation(fluidProgram, 'u_motion'), 2);
+            gl.uniform2f(gl.getUniformLocation(fluidProgram, 'u_resolution'), canvas.width, canvas.height);
+            gl.uniform1f(gl.getUniformLocation(fluidProgram, 'u_dt'), dt);
+            gl.uniform1f(gl.getUniformLocation(fluidProgram, 'u_diffusion'), diffusion);
+            gl.uniform1f(gl.getUniformLocation(fluidProgram, 'u_viscosity'), viscosity);
+            gl.uniform1f(gl.getUniformLocation(fluidProgram, 'u_force'), force);
+            gl.uniform3f(gl.getUniformLocation(fluidProgram, 'u_color1'), color1.r, color1.g, color1.b);
+            gl.uniform3f(gl.getUniformLocation(fluidProgram, 'u_color2'), color2.r, color2.g, color2.b);
+            gl.uniform3f(gl.getUniformLocation(fluidProgram, 'u_color3'), color3.r, color3.g, color3.b);
+            gl.uniform1f(gl.getUniformLocation(fluidProgram, 'u_time'), Date.now() * 0.001);
+            
+            // Bind textures
+            gl.activeTexture(gl.TEXTURE0);
+            gl.bindTexture(gl.TEXTURE_2D, velocityTexture);
+            
+            gl.activeTexture(gl.TEXTURE1);
+            gl.bindTexture(gl.TEXTURE_2D, densityTexture);
+            
+            gl.activeTexture(gl.TEXTURE2);
+            gl.bindTexture(gl.TEXTURE_2D, motionTexture);
+            
+            // Draw
+            gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+        }
+        
+        // Render final scene
+        function render() {
+            gl.useProgram(displayProgram);
+            gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+            
+            const bgColor = hexToRgb(document.getElementById('bgColor').value);
+            
+            // Set uniforms
+            gl.uniform1i(gl.getUniformLocation(displayProgram, 'u_fluid'), 0);
+            gl.uniform1i(gl.getUniformLocation(displayProgram, 'u_webcam'), 1);
+            gl.uniform3f(gl.getUniformLocation(displayProgram, 'u_bgColor'), bgColor.r, bgColor.g, bgColor.b);
+            gl.uniform1i(gl.getUniformLocation(displayProgram, 'u_mirror'), isMirrored);
+            
+            // Bind textures
+            gl.activeTexture(gl.TEXTURE0);
+            gl.bindTexture(gl.TEXTURE_2D, densityTexture);
+            
+            gl.activeTexture(gl.TEXTURE1);
+            gl.bindTexture(gl.TEXTURE_2D, webcamTexture);
+            
+            // Draw
+            gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+        }
+        
+        // Animation loop
+        function animate() {
+            updateWebcamTexture();
+            detectMotion();
+            simulateFluid();
+            render();
+            requestAnimationFrame(animate);
+        }
+        
+        // Utility functions
+        function hexToRgb(hex) {
+            const result = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);
+            return {
+                r: parseInt(result[1], 16) / 255,
+                g: parseInt(result[2], 16) / 255,
+                b: parseInt(result[3], 16) / 255
+            };
+        }
+        
+        // Event listeners
+        function setupEventListeners() {
+            const vertexBuffer = setupGeometry();
+            
+            // Use vertex buffer for all programs
+            [fluidProgram, motionProgram, displayProgram].forEach(program => {
+                const positionLocation = gl.getAttribLocation(program, 'a_position');
+                gl.enableVertexAttribArray(positionLocation);
+                gl.vertexAttribPointer(positionLocation, 2, gl.FLOAT, false, 0, 0);
+            });
+            
+            // Sensitivity slider
+            document.getElementById('sensitivity').addEventListener('input', (e) => {
+                motionSensitivity = e.target.value / 100;
+                document.getElementById('sensitivityValue').textContent = e.target.value;
+            });
+            
+            // Viscosity slider
+            document.getElementById('viscosity').addEventListener('input', (e) => {
+                viscosity = e.target.value / 1000000;
+                document.getElementById('viscosityValue').textContent = e.target.value;
+            });
+            
+            // Mirror button
+            document.getElementById('mirrorBtn').addEventListener('click', () => {
+                isMirrored = !isMirrored;
+                document.getElementById('mirrorBtn').classList.toggle('active', isMirrored);
+            });
+            
+            // Fullscreen button
+            document.getElementById('fullscreenBtn').addEventListener('click', () => {
+                if (!document.fullscreenElement) {
+                    document.documentElement.requestFullscreen();
+                } else {
+                    document.exitFullscreen();
+                }
+            });
+            
+            // Hide UI button
+            document.getElementById('hideUIBtn').addEventListener('click', () => {
+                isUIHidden = !isUIHidden;
+                const controls = document.getElementById('controls');
+                const status = document.getElementById('status');
+                
+                if (isUIHidden) {
+                    controls.classList.add('hidden');
+                    status.style.opacity = '0';
+                } else {
+                    controls.classList.remove('hidden');
+                    status.style.opacity = '1';
+                }
+            });
+            
+            // Reset button
+            document.getElementById('resetBtn').addEventListener('click', () => {
+                initTextures();
+                previousFrame = null;
+            });
+            
+            // Keyboard shortcuts
+            document.addEventListener('keydown', (e) => {
+                switch(e.key.toLowerCase()) {
+                    case 'm':
+                        document.getElementById('mirrorBtn').click();
+                        break;
+                    case 'f':
+                        document.getElementById('fullscreenBtn').click();
+                        break;
+                    case 'h':
+                        document.getElementById('hideUIBtn').click();
+                        break;
+                    case 'r':
+                        document.getElementById('resetBtn').click();
+                        break;
+                }
+            });
+        }
+        
+        // Initialize application
+        async function init() {
+            if (!initWebGL()) return;
+            if (!initShaders()) return;
+            
+            initTextures();
+            setupEventListeners();
+            
+            if (await initWebcam()) {
+                animate();
+            }
+        }
+        
+        // Start the application
+        init();
+    </script>
+</body>
+</html>
