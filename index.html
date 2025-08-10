@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Motion-Reactive Fluid Simulation</title>
+    <title>Three-Color Fluid Simulation</title>
     <style>
         * {
             margin: 0;
@@ -23,6 +23,7 @@
             left: 0;
             width: 100vw;
             height: 100vh;
+            image-rendering: auto;
         }
         
         #webcam {
@@ -44,6 +45,23 @@
             backdrop-filter: blur(10px);
             box-shadow: 0 8px 32px rgba(0,0,0,0.3);
             transition: transform 0.3s ease, opacity 0.3s ease;
+            max-height: 90vh;
+            overflow-y: auto;
+            width: 300px;
+        }
+        
+        .controls::-webkit-scrollbar {
+            width: 8px;
+        }
+        
+        .controls::-webkit-scrollbar-track {
+            background: rgba(255,255,255,0.1);
+            border-radius: 4px;
+        }
+        
+        .controls::-webkit-scrollbar-thumb {
+            background: rgba(255,255,255,0.3);
+            border-radius: 4px;
         }
         
         .controls.hidden {
@@ -53,20 +71,36 @@
         
         .control-group {
             margin-bottom: 15px;
+            padding-bottom: 15px;
+            border-bottom: 1px solid rgba(255,255,255,0.1);
+        }
+        
+        .control-group:last-of-type {
+            border-bottom: none;
         }
         
         label {
             display: block;
             color: #aaa;
-            font-size: 12px;
+            font-size: 11px;
             margin-bottom: 5px;
             text-transform: uppercase;
             letter-spacing: 1px;
         }
         
+        .color-group {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 10px;
+        }
+        
+        .color-input {
+            flex: 1;
+        }
+        
         input[type="color"] {
             width: 100%;
-            height: 40px;
+            height: 35px;
             border: none;
             border-radius: 8px;
             cursor: pointer;
@@ -83,16 +117,23 @@
             margin-top: 5px;
         }
         
+        .range-value {
+            display: inline-block;
+            color: #667eea;
+            font-size: 11px;
+            margin-left: 5px;
+        }
+        
         button {
             background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
             color: white;
             border: none;
-            padding: 10px 15px;
+            padding: 8px 12px;
             border-radius: 8px;
             cursor: pointer;
-            font-size: 14px;
+            font-size: 13px;
             font-weight: 600;
-            margin: 5px;
+            margin: 3px;
             transition: all 0.3s ease;
             box-shadow: 0 4px 15px rgba(102, 126, 234, 0.3);
         }
@@ -142,41 +183,84 @@
         #toggleUI.show {
             opacity: 1;
         }
+        
+        h3 {
+            color: #fff;
+            margin-bottom: 20px;
+            font-size: 18px;
+        }
+        
+        .section-title {
+            color: #667eea;
+            font-size: 13px;
+            margin: 15px 0 10px 0;
+            font-weight: 600;
+        }
     </style>
 </head>
 <body>
     <video id="webcam" autoplay playsinline></video>
-    <canvas id="motionCanvas"></canvas>
     <canvas id="fluidCanvas"></canvas>
     
     <button id="toggleUI" onclick="toggleUI()">Show Controls</button>
     
     <div class="controls" id="controls">
-        <h3 style="color: #fff; margin-bottom: 20px;">Fluid Controls</h3>
+        <h3>Fluid Simulation</h3>
         
+        <div class="section-title">Fluid Colors</div>
         <div class="control-group">
-            <label for="fluidColor">Fluid Color</label>
-            <input type="color" id="fluidColor" value="#4a90e2">
-        </div>
-        
-        <div class="control-group">
+            <div class="color-group">
+                <div class="color-input">
+                    <label for="fluidColor1">Color 1</label>
+                    <input type="color" id="fluidColor1" value="#4a90e2">
+                </div>
+                <div class="color-input">
+                    <label for="fluidColor2">Color 2</label>
+                    <input type="color" id="fluidColor2" value="#e24a90">
+                </div>
+                <div class="color-input">
+                    <label for="fluidColor3">Color 3</label>
+                    <input type="color" id="fluidColor3" value="#90e24a">
+                </div>
+            </div>
             <label for="backgroundColor">Background Color</label>
             <input type="color" id="backgroundColor" value="#0a0a0a">
         </div>
         
+        <div class="section-title">Simulation Settings</div>
         <div class="control-group">
-            <label for="sensitivity">Motion Sensitivity</label>
-            <input type="range" id="sensitivity" min="10" max="100" value="30">
+            <label for="resolution">Resolution <span class="range-value" id="resolutionValue">15</span></label>
+            <input type="range" id="resolution" min="5" max="50" value="15">
+            
+            <label for="particleCount">Particle Count <span class="range-value" id="particleCountValue">5000</span></label>
+            <input type="range" id="particleCount" min="1000" max="20000" step="500" value="5000">
+            
+            <label for="particleDiffusion">Particle Diffusion <span class="range-value" id="particleDiffusionValue">1.5</span></label>
+            <input type="range" id="particleDiffusion" min="0.1" max="5" step="0.1" value="1.5">
         </div>
         
+        <div class="section-title">Fluid Dynamics</div>
         <div class="control-group">
-            <label for="fluidDensity">Fluid Density</label>
-            <input type="range" id="fluidDensity" min="1" max="10" value="5">
+            <label for="viscosity">Viscosity <span class="range-value" id="viscosityValue">0.98</span></label>
+            <input type="range" id="viscosity" min="0.9" max="0.99" step="0.01" value="0.98">
+            
+            <label for="flowSpeed">Flow Speed <span class="range-value" id="flowSpeedValue">1.0</span></label>
+            <input type="range" id="flowSpeed" min="0.1" max="3" step="0.1" value="1.0">
+            
+            <label for="turbulence">Turbulence <span class="range-value" id="turbulenceValue">0.3</span></label>
+            <input type="range" id="turbulence" min="0" max="2" step="0.1" value="0.3">
+            
+            <label for="rippleStrength">Ripple Strength <span class="range-value" id="rippleStrengthValue">30</span></label>
+            <input type="range" id="rippleStrength" min="10" max="100" value="30">
         </div>
         
+        <div class="section-title">Motion Detection</div>
         <div class="control-group">
-            <label for="flowSpeed">Flow Speed</label>
-            <input type="range" id="flowSpeed" min="0.1" max="5" step="0.1" value="2">
+            <label for="sensitivity">Sensitivity <span class="range-value" id="sensitivityValue">25</span></label>
+            <input type="range" id="sensitivity" min="10" max="100" value="25">
+            
+            <label for="recoveryTime">Recovery Time (s) <span class="range-value" id="recoveryTimeValue">2.0</span></label>
+            <input type="range" id="recoveryTime" min="0.5" max="5" step="0.1" value="2.0">
         </div>
         
         <div class="button-group">
@@ -191,10 +275,8 @@
     
     <script>
         const video = document.getElementById('webcam');
-        const motionCanvas = document.getElementById('motionCanvas');
         const fluidCanvas = document.getElementById('fluidCanvas');
-        const motionCtx = motionCanvas.getContext('2d');
-        const fluidCtx = fluidCanvas.getContext('2d');
+        const ctx = fluidCanvas.getContext('2d');
         const controls = document.getElementById('controls');
         const toggleBtn = document.getElementById('toggleUI');
         const status = document.getElementById('status');
@@ -202,36 +284,131 @@
         let mirrored = false;
         let uiHidden = false;
         let previousFrame = null;
-        let motionData = [];
         let particles = [];
-        let gridSize = 20;
-        let cols, rows;
         let flowField = [];
+        let cols, rows;
+        let time = 0;
         
-        // Settings
+        // Settings with defaults
         let settings = {
-            fluidColor: '#4a90e2',
+            fluidColors: ['#4a90e2', '#e24a90', '#90e24a'],
             backgroundColor: '#0a0a0a',
-            sensitivity: 30,
-            fluidDensity: 5,
-            flowSpeed: 2
+            resolution: 15,
+            particleCount: 5000,
+            particleDiffusion: 1.5,
+            viscosity: 0.98,
+            flowSpeed: 1.0,
+            turbulence: 0.3,
+            rippleStrength: 30,
+            sensitivity: 25,
+            recoveryTime: 2.0
         };
         
-        // Resize canvases
-        function resizeCanvases() {
-            motionCanvas.width = window.innerWidth;
-            motionCanvas.height = window.innerHeight;
+        // Particle class for better organization
+        class Particle {
+            constructor(x, y) {
+                // Ensure particles start within bounds
+                const margin = 10;
+                this.x = Math.max(margin, Math.min(x, window.innerWidth - margin));
+                this.y = Math.max(margin, Math.min(y, window.innerHeight - margin));
+                this.vx = 0;
+                this.vy = 0;
+                this.baseX = this.x;
+                this.baseY = this.y;
+                this.size = Math.random() * 3 + 1;
+                this.life = 1;
+                this.colorIndex = Math.floor(Math.random() * 3);
+                this.phase = Math.random() * Math.PI * 2;
+            }
+            
+            update() {
+                const gridX = Math.floor(this.x / settings.resolution);
+                const gridY = Math.floor(this.y / settings.resolution);
+                
+                if (gridX >= 0 && gridX < cols && gridY >= 0 && gridY < rows) {
+                    const cell = flowField[gridY][gridX];
+                    
+                    // Apply flow field forces
+                    this.vx += cell.vx * settings.flowSpeed;
+                    this.vy += cell.vy * settings.flowSpeed;
+                    
+                    // Lake-like ripple effect
+                    if (cell.motion > 0.1) {
+                        const ripple = Math.sin(time * 0.1 + this.phase) * cell.motion;
+                        this.vy += ripple * 0.3;
+                        this.life = Math.max(0, this.life - 0.02);
+                    } else if (cell.recovery <= 0) {
+                        // Gentle return to base position
+                        const dx = this.baseX - this.x;
+                        const dy = this.baseY - this.y;
+                        this.vx += dx * 0.005;
+                        this.vy += dy * 0.005;
+                        this.life = Math.min(1, this.life + 0.01);
+                    }
+                }
+                
+                // Add turbulence (localized, doesn't push particles off screen)
+                const noise = Math.sin(this.x * 0.01 + time * 0.01) * Math.cos(this.y * 0.01 + time * 0.008);
+                this.vx += noise * settings.turbulence * 0.5;
+                this.vy += Math.cos(noise) * settings.turbulence * 0.5;
+                
+                // Subtle horizontal wave only (no vertical push)
+                const wave = Math.sin(this.y * 0.005 + time * 0.02) * 0.1;
+                this.vx += wave;
+                
+                // Apply velocity
+                this.x += this.vx;
+                this.y += this.vy;
+                
+                // Viscosity (fluid resistance)
+                this.vx *= settings.viscosity;
+                this.vy *= settings.viscosity;
+                
+                // Hard boundaries - particles bounce back instead of wrapping
+                const margin = 10;
+                if (this.x < margin) {
+                    this.x = margin;
+                    this.vx = Math.abs(this.vx) * 0.5; // Bounce with dampening
+                }
+                if (this.x > window.innerWidth - margin) {
+                    this.x = window.innerWidth - margin;
+                    this.vx = -Math.abs(this.vx) * 0.5;
+                }
+                if (this.y < margin) {
+                    this.y = margin;
+                    this.vy = Math.abs(this.vy) * 0.5;
+                }
+                if (this.y > window.innerHeight - margin) {
+                    this.y = window.innerHeight - margin;
+                    this.vy = -Math.abs(this.vy) * 0.5;
+                }
+            }
+            
+            draw() {
+                if (this.life > 0.05) {
+                    const alpha = this.life * 0.6;
+                    const color = settings.fluidColors[this.colorIndex];
+                    ctx.fillStyle = color + Math.floor(alpha * 255).toString(16).padStart(2, '0');
+                    ctx.beginPath();
+                    ctx.arc(this.x, this.y, this.size * settings.particleDiffusion, 0, Math.PI * 2);
+                    ctx.fill();
+                }
+            }
+        }
+        
+        // Resize canvas
+        function resizeCanvas() {
             fluidCanvas.width = window.innerWidth;
             fluidCanvas.height = window.innerHeight;
             
-            cols = Math.ceil(window.innerWidth / gridSize);
-            rows = Math.ceil(window.innerHeight / gridSize);
+            cols = Math.ceil(window.innerWidth / settings.resolution);
+            rows = Math.ceil(window.innerHeight / settings.resolution);
             
             initializeFlowField();
             initializeParticles();
         }
         
-        // Initialize flow field
+        // Initialize flow field with fluid dynamics
         function initializeFlowField() {
             flowField = [];
             for (let y = 0; y < rows; y++) {
@@ -240,8 +417,11 @@
                     flowField[y][x] = {
                         vx: 0,
                         vy: 0,
+                        prevVx: 0,
+                        prevVy: 0,
                         motion: 0,
-                        recovery: 0
+                        recovery: 0,
+                        pressure: 0
                     };
                 }
             }
@@ -250,22 +430,36 @@
         // Initialize particles
         function initializeParticles() {
             particles = [];
-            const spacing = gridSize / settings.fluidDensity;
+            const margin = 20;
+            const effectiveWidth = window.innerWidth - (2 * margin);
+            const effectiveHeight = window.innerHeight - (2 * margin);
             
-            for (let x = 0; x < window.innerWidth; x += spacing) {
-                for (let y = 0; y < window.innerHeight; y += spacing) {
-                    particles.push({
-                        x: x + Math.random() * spacing,
-                        y: y + Math.random() * spacing,
-                        vx: 0,
-                        vy: 0,
-                        size: Math.random() * 3 + 2,
-                        life: 1,
-                        baseX: x,
-                        baseY: y
-                    });
+            // Calculate grid spacing based on particle count
+            const area = effectiveWidth * effectiveHeight;
+            const spacing = Math.sqrt(area / settings.particleCount);
+            
+            // Create particles in a grid pattern with some randomness
+            for (let x = margin; x < window.innerWidth - margin; x += spacing) {
+                for (let y = margin; y < window.innerHeight - margin; y += spacing) {
+                    if (particles.length < settings.particleCount) {
+                        particles.push(new Particle(
+                            x + (Math.random() - 0.5) * spacing * 0.8,
+                            y + (Math.random() - 0.5) * spacing * 0.8
+                        ));
+                    }
                 }
             }
+            
+            // Fill remaining particles if needed
+            while (particles.length < settings.particleCount) {
+                particles.push(new Particle(
+                    margin + Math.random() * effectiveWidth,
+                    margin + Math.random() * effectiveHeight
+                ));
+            }
+            
+            // Trim to exact count
+            particles = particles.slice(0, settings.particleCount);
         }
         
         // Initialize webcam
@@ -280,7 +474,7 @@
                 video.srcObject = stream;
                 
                 video.onloadedmetadata = () => {
-                    status.textContent = 'Webcam active - Move to interact!';
+                    status.textContent = 'Webcam active - Move to create ripples!';
                     setTimeout(() => status.style.display = 'none', 3000);
                     detectMotion();
                 };
@@ -291,7 +485,7 @@
             }
         }
         
-        // Motion detection
+        // Motion detection with fluid dynamics
         function detectMotion() {
             const tempCanvas = document.createElement('canvas');
             const tempCtx = tempCanvas.getContext('2d');
@@ -321,167 +515,146 @@
             processFrame();
         }
         
-        // Detect motion difference between frames
+        // Enhanced motion detection with fluid-like response
         function detectMotionDifference(prev, curr) {
             const sensitivity = settings.sensitivity;
             const scaleX = window.innerWidth / 640;
             const scaleY = window.innerHeight / 480;
+            const recoveryDecay = 0.016 / settings.recoveryTime;
             
-            // Reset motion data
+            // Update flow field with fluid dynamics
             for (let y = 0; y < rows; y++) {
                 for (let x = 0; x < cols; x++) {
-                    if (flowField[y][x].motion > 0) {
-                        flowField[y][x].motion *= 0.95; // Decay motion
-                    }
-                    if (flowField[y][x].recovery > 0) {
-                        flowField[y][x].recovery -= 0.016; // ~60fps, 2 seconds recovery
-                    }
-                }
-            }
-            
-            // Detect motion in blocks
-            for (let y = 0; y < 480; y += 10) {
-                for (let x = 0; x < 640; x += 10) {
-                    let diff = 0;
-                    let vx = 0;
-                    let vy = 0;
+                    const cell = flowField[y][x];
                     
-                    for (let dy = 0; dy < 10; dy++) {
-                        for (let dx = 0; dx < 10; dx++) {
-                            const idx = ((y + dy) * 640 + (x + dx)) * 4;
-                            
-                            const dr = Math.abs(curr.data[idx] - prev.data[idx]);
-                            const dg = Math.abs(curr.data[idx + 1] - prev.data[idx + 1]);
-                            const db = Math.abs(curr.data[idx + 2] - prev.data[idx + 2]);
-                            
-                            diff += (dr + dg + db) / 3;
-                            
-                            // Simple motion vector estimation
-                            if (dr + dg + db > sensitivity) {
-                                vx += (curr.data[idx] - prev.data[idx]) / 255;
-                                vy += (curr.data[idx + 1] - prev.data[idx + 1]) / 255;
+                    // Store previous velocities
+                    cell.prevVx = cell.vx;
+                    cell.prevVy = cell.vy;
+                    
+                    // Decay motion and recovery
+                    cell.motion *= 0.95;
+                    if (cell.recovery > 0) {
+                        cell.recovery -= recoveryDecay;
+                    }
+                    
+                    // Diffuse velocities to neighbors (fluid-like behavior)
+                    let avgVx = 0, avgVy = 0;
+                    let count = 0;
+                    
+                    for (let dy = -1; dy <= 1; dy++) {
+                        for (let dx = -1; dx <= 1; dx++) {
+                            const nx = x + dx;
+                            const ny = y + dy;
+                            if (nx >= 0 && nx < cols && ny >= 0 && ny < rows) {
+                                avgVx += flowField[ny][nx].prevVx;
+                                avgVy += flowField[ny][nx].prevVy;
+                                count++;
                             }
                         }
                     }
                     
-                    diff /= 100; // Average difference
+                    if (count > 0) {
+                        avgVx /= count;
+                        avgVy /= count;
+                        cell.vx = cell.vx * 0.7 + avgVx * 0.3; // Diffusion
+                        cell.vy = cell.vy * 0.7 + avgVy * 0.3;
+                    }
+                    
+                    // Apply damping
+                    cell.vx *= settings.viscosity;
+                    cell.vy *= settings.viscosity;
+                }
+            }
+            
+            // Detect motion in blocks
+            for (let y = 0; y < 480; y += 8) {
+                for (let x = 0; x < 640; x += 8) {
+                    let diff = 0;
+                    let vx = 0, vy = 0;
+                    
+                    for (let dy = 0; dy < 8; dy++) {
+                        for (let dx = 0; dx < 8; dx++) {
+                            const idx = ((y + dy) * 640 + (x + dx)) * 4;
+                            
+                            if (idx < curr.data.length) {
+                                const dr = Math.abs(curr.data[idx] - prev.data[idx]);
+                                const dg = Math.abs(curr.data[idx + 1] - prev.data[idx + 1]);
+                                const db = Math.abs(curr.data[idx + 2] - prev.data[idx + 2]);
+                                
+                                const pixelDiff = (dr + dg + db) / 3;
+                                diff += pixelDiff;
+                                
+                                if (pixelDiff > sensitivity) {
+                                    vx += (curr.data[idx] - prev.data[idx]) / 255;
+                                    vy += (curr.data[idx + 1] - prev.data[idx + 1]) / 255;
+                                }
+                            }
+                        }
+                    }
+                    
+                    diff /= 64; // Average difference
                     
                     if (diff > sensitivity) {
-                        const gridX = Math.floor(x * scaleX / gridSize);
-                        const gridY = Math.floor(y * scaleY / gridSize);
+                        const gridX = Math.floor(x * scaleX / settings.resolution);
+                        const gridY = Math.floor(y * scaleY / settings.resolution);
                         
                         if (gridX >= 0 && gridX < cols && gridY >= 0 && gridY < rows) {
-                            flowField[gridY][gridX].motion = Math.min(diff / sensitivity, 1);
-                            flowField[gridY][gridX].vx = vx * 10;
-                            flowField[gridY][gridX].vy = vy * 10;
-                            flowField[gridY][gridX].recovery = 2; // 2 seconds
+                            const intensity = Math.min(diff / sensitivity, 1);
+                            flowField[gridY][gridX].motion = intensity;
+                            flowField[gridY][gridX].recovery = settings.recoveryTime;
+                            
+                            // Create ripple effect
+                            const rippleForce = intensity * settings.rippleStrength;
+                            
+                            // Radial push from motion point
+                            for (let ry = -2; ry <= 2; ry++) {
+                                for (let rx = -2; rx <= 2; rx++) {
+                                    const nx = gridX + rx;
+                                    const ny = gridY + ry;
+                                    
+                                    if (nx >= 0 && nx < cols && ny >= 0 && ny < rows && (rx !== 0 || ry !== 0)) {
+                                        const dist = Math.sqrt(rx * rx + ry * ry);
+                                        const force = rippleForce / (dist + 1);
+                                        
+                                        flowField[ny][nx].vx += (rx / dist) * force;
+                                        flowField[ny][nx].vy += (ry / dist) * force;
+                                    }
+                                }
+                            }
                         }
                     }
                 }
             }
         }
         
-        // Update particles
-        function updateParticles() {
-            const speed = settings.flowSpeed;
-            
-            particles.forEach(p => {
-                const gridX = Math.floor(p.x / gridSize);
-                const gridY = Math.floor(p.y / gridSize);
-                
-                if (gridX >= 0 && gridX < cols && gridY >= 0 && gridY < rows) {
-                    const cell = flowField[gridY][gridX];
-                    
-                    if (cell.motion > 0.1) {
-                        // Repel from motion
-                        const dx = p.x - (gridX + 0.5) * gridSize;
-                        const dy = p.y - (gridY + 0.5) * gridSize;
-                        const dist = Math.sqrt(dx * dx + dy * dy);
-                        
-                        if (dist > 0) {
-                            const force = cell.motion * 50;
-                            p.vx += (dx / dist) * force + cell.vx * 5;
-                            p.vy += (dy / dist) * force + cell.vy * 5;
-                        }
-                        
-                        p.life = Math.max(0, p.life - 0.05);
-                    } else if (cell.recovery <= 0) {
-                        // Return to base position
-                        const dx = p.baseX - p.x;
-                        const dy = p.baseY - p.y;
-                        p.vx += dx * 0.01;
-                        p.vy += dy * 0.01;
-                        p.life = Math.min(1, p.life + 0.02);
-                    }
-                }
-                
-                // Add flow noise
-                const noise = Math.sin(p.x * 0.01 + Date.now() * 0.001) * Math.cos(p.y * 0.01 + Date.now() * 0.0011);
-                p.vx += noise * 0.5 * speed;
-                p.vy += Math.cos(noise) * 0.5 * speed;
-                
-                // Apply velocity
-                p.x += p.vx * speed;
-                p.y += p.vy * speed;
-                
-                // Damping
-                p.vx *= 0.95;
-                p.vy *= 0.95;
-                
-                // Boundaries with wrapping
-                if (p.x < 0) p.x = window.innerWidth;
-                if (p.x > window.innerWidth) p.x = 0;
-                if (p.y < 0) p.y = window.innerHeight;
-                if (p.y > window.innerHeight) p.y = 0;
-            });
-        }
-        
-        // Render fluid
-        function renderFluid() {
-            fluidCtx.fillStyle = settings.backgroundColor;
-            fluidCtx.fillRect(0, 0, fluidCanvas.width, fluidCanvas.height);
-            
-            // Create gradient effect
-            const gradient = fluidCtx.createRadialGradient(
-                fluidCanvas.width / 2, fluidCanvas.height / 2, 0,
-                fluidCanvas.width / 2, fluidCanvas.height / 2, fluidCanvas.width / 2
-            );
-            
-            const color = settings.fluidColor;
-            gradient.addColorStop(0, color + '22');
-            gradient.addColorStop(1, color + '00');
-            
-            fluidCtx.fillStyle = gradient;
-            fluidCtx.fillRect(0, 0, fluidCanvas.width, fluidCanvas.height);
-            
-            // Draw particles
-            particles.forEach(p => {
-                if (p.life > 0.1) {
-                    const alpha = p.life * 0.8;
-                    fluidCtx.fillStyle = settings.fluidColor + Math.floor(alpha * 255).toString(16).padStart(2, '0');
-                    fluidCtx.beginPath();
-                    fluidCtx.arc(p.x, p.y, p.size, 0, Math.PI * 2);
-                    fluidCtx.fill();
-                }
-            });
-            
-            // Draw motion areas (debug visualization - optional)
-            if (false) { // Set to true to see motion detection areas
-                for (let y = 0; y < rows; y++) {
-                    for (let x = 0; x < cols; x++) {
-                        if (flowField[y][x].motion > 0.1) {
-                            fluidCtx.fillStyle = `rgba(255, 0, 0, ${flowField[y][x].motion * 0.3})`;
-                            fluidCtx.fillRect(x * gridSize, y * gridSize, gridSize, gridSize);
-                        }
-                    }
-                }
-            }
-        }
-        
-        // Animation loop
+        // Main animation loop
         function animate() {
-            updateParticles();
-            renderFluid();
+            time += 0.016; // ~60fps
+            
+            // Clear canvas
+            ctx.fillStyle = settings.backgroundColor;
+            ctx.fillRect(0, 0, fluidCanvas.width, fluidCanvas.height);
+            
+            // Create gradient background
+            const gradient = ctx.createRadialGradient(
+                fluidCanvas.width / 2, fluidCanvas.height / 2, 0,
+                fluidCanvas.width / 2, fluidCanvas.height / 2, Math.max(fluidCanvas.width, fluidCanvas.height) / 2
+            );
+            gradient.addColorStop(0, settings.backgroundColor + '44');
+            gradient.addColorStop(1, settings.backgroundColor);
+            ctx.fillStyle = gradient;
+            ctx.fillRect(0, 0, fluidCanvas.width, fluidCanvas.height);
+            
+            // Update and draw particles
+            ctx.globalCompositeOperation = 'screen'; // Additive blending for better color mixing
+            
+            particles.forEach(particle => {
+                particle.update();
+                particle.draw();
+            });
+            
+            ctx.globalCompositeOperation = 'source-over';
+            
             requestAnimationFrame(animate);
         }
         
@@ -511,32 +684,74 @@
             initializeParticles();
         }
         
-        // Event listeners
-        document.getElementById('fluidColor').addEventListener('input', (e) => {
-            settings.fluidColor = e.target.value;
+        // Event listeners for controls
+        document.getElementById('fluidColor1').addEventListener('input', (e) => {
+            settings.fluidColors[0] = e.target.value;
+        });
+        
+        document.getElementById('fluidColor2').addEventListener('input', (e) => {
+            settings.fluidColors[1] = e.target.value;
+        });
+        
+        document.getElementById('fluidColor3').addEventListener('input', (e) => {
+            settings.fluidColors[2] = e.target.value;
         });
         
         document.getElementById('backgroundColor').addEventListener('input', (e) => {
             settings.backgroundColor = e.target.value;
         });
         
-        document.getElementById('sensitivity').addEventListener('input', (e) => {
-            settings.sensitivity = parseInt(e.target.value);
+        document.getElementById('resolution').addEventListener('input', (e) => {
+            settings.resolution = parseInt(e.target.value);
+            document.getElementById('resolutionValue').textContent = e.target.value;
+            resizeCanvas();
         });
         
-        document.getElementById('fluidDensity').addEventListener('input', (e) => {
-            settings.fluidDensity = parseInt(e.target.value);
+        document.getElementById('particleCount').addEventListener('input', (e) => {
+            settings.particleCount = parseInt(e.target.value);
+            document.getElementById('particleCountValue').textContent = e.target.value;
             initializeParticles();
+        });
+        
+        document.getElementById('particleDiffusion').addEventListener('input', (e) => {
+            settings.particleDiffusion = parseFloat(e.target.value);
+            document.getElementById('particleDiffusionValue').textContent = e.target.value;
+        });
+        
+        document.getElementById('viscosity').addEventListener('input', (e) => {
+            settings.viscosity = parseFloat(e.target.value);
+            document.getElementById('viscosityValue').textContent = e.target.value;
         });
         
         document.getElementById('flowSpeed').addEventListener('input', (e) => {
             settings.flowSpeed = parseFloat(e.target.value);
+            document.getElementById('flowSpeedValue').textContent = e.target.value;
         });
         
-        window.addEventListener('resize', resizeCanvases);
+        document.getElementById('turbulence').addEventListener('input', (e) => {
+            settings.turbulence = parseFloat(e.target.value);
+            document.getElementById('turbulenceValue').textContent = e.target.value;
+        });
+        
+        document.getElementById('rippleStrength').addEventListener('input', (e) => {
+            settings.rippleStrength = parseInt(e.target.value);
+            document.getElementById('rippleStrengthValue').textContent = e.target.value;
+        });
+        
+        document.getElementById('sensitivity').addEventListener('input', (e) => {
+            settings.sensitivity = parseInt(e.target.value);
+            document.getElementById('sensitivityValue').textContent = e.target.value;
+        });
+        
+        document.getElementById('recoveryTime').addEventListener('input', (e) => {
+            settings.recoveryTime = parseFloat(e.target.value);
+            document.getElementById('recoveryTimeValue').textContent = e.target.value;
+        });
+        
+        window.addEventListener('resize', resizeCanvas);
         
         // Initialize
-        resizeCanvases();
+        resizeCanvas();
         initWebcam();
         animate();
     </script>
